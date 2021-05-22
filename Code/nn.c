@@ -25,9 +25,9 @@ struct NeuralNet{
     int* n_neurons_per_layer;
     double*** w;
     double** b;
-    double*** delta_w;
-    double** delta_b;
-    double** theta;
+    double*** momentum_w;
+    double** momentum_b;
+    double** delta;
     double** in;
     double** out;
     double* targets;
@@ -41,17 +41,17 @@ struct NeuralNet* newNet(int n_layers, int n_neurons_per_layer[]){
         nn->n_neurons_per_layer[i] = n_neurons_per_layer[i];
     }
     nn->w = malloc((nn->n_layers-1)*sizeof(double**));
-    nn->delta_w = malloc((nn->n_layers-1)*sizeof(double**));
+    nn->momentum_w = malloc((nn->n_layers-1)*sizeof(double**));
     nn->b = malloc((nn->n_layers-1)*sizeof(double*));
-    nn->delta_b = malloc((nn->n_layers-1)*sizeof(double*));
+    nn->momentum_b = malloc((nn->n_layers-1)*sizeof(double*));
     for(int i=0;i<nn->n_layers-1;i++){
         nn->w[i] = malloc((nn->n_neurons_per_layer[i] + 1)*sizeof(double*));
-        nn->delta_w[i] = malloc((nn->n_neurons_per_layer[i] + 1)*sizeof(double*));
+        nn->momentum_w[i] = malloc((nn->n_neurons_per_layer[i] + 1)*sizeof(double*));
         nn->b[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
-        nn->delta_b[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
+        nn->momentum_b[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
         for(int j=0;j<nn->n_neurons_per_layer[i]+1;j++){
             nn->w[i][j] = malloc((nn->n_neurons_per_layer[i+1] + 1)*sizeof(double));
-            nn->delta_w[i][j] = malloc((nn->n_neurons_per_layer[i+1] + 1)*sizeof(double));
+            nn->momentum_w[i][j] = malloc((nn->n_neurons_per_layer[i+1] + 1)*sizeof(double));
         }
     }
     for(int k=0;k<nn->n_layers-1;k++){
@@ -62,13 +62,13 @@ struct NeuralNet* newNet(int n_layers, int n_neurons_per_layer[]){
             }
         }
     }
-    nn->theta = malloc((nn->n_layers)*sizeof(double*));
+    nn->delta = malloc((nn->n_layers)*sizeof(double*));
     nn->in = malloc((nn->n_layers)*sizeof(double*));
     nn->out = malloc((nn->n_layers)*sizeof(double*));
     for(int i=0;i<nn->n_layers;i++){
         nn->in[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
         nn->out[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
-        nn->theta[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
+        nn->delta[i] = malloc((nn->n_neurons_per_layer[i]+1)*sizeof(double));
     }
     nn->targets = malloc((nn->n_neurons_per_layer[nn->n_layers-1]+1)*sizeof(double));
     return nn;
@@ -150,17 +150,17 @@ void back_propagation(struct NeuralNet* nn, char* activation_fun, double learnin
         else{
             grad = sigmoid_d(nn->out[last_layer][i]);
         }
-        nn->theta[last_layer][i] = grad * (nn->targets[i] - nn->out[last_layer][i]);
+        nn->delta[last_layer][i] = grad * (nn->targets[i] - nn->out[last_layer][i]);
     }
     for(int k=nn->n_layers-2;k>0;k--){
         
         for(int i=1;i<nn->n_neurons_per_layer[k]+1;i++){
             double sum = 0.0;
             for(int j=1;j<nn->n_neurons_per_layer[k+1]+1;j++){
-                sum += nn->b[k][j] * nn->theta[k+1][j];
+                sum += nn->b[k][j] * nn->delta[k+1][j];
             }
             for(int j=1;j<nn->n_neurons_per_layer[k+1]+1;j++){
-                sum += nn->w[k][i][j] * nn->theta[k+1][j];
+                sum += nn->w[k][i][j] * nn->delta[k+1][j];
             }
             double grad;
             if(strcmp(activation_fun, "sigmoid") == 0){
@@ -175,19 +175,19 @@ void back_propagation(struct NeuralNet* nn, char* activation_fun, double learnin
             else{
                 grad = sigmoid_d(nn->out[k][i]);
             }
-            nn->theta[k][i] = grad * sum;
+            nn->delta[k][i] = grad * sum;
         }
     }
     for(int k=0;k<nn->n_layers-1;k++){
         for(int i=1;i<nn->n_neurons_per_layer[k]+1;i++){
             for(int j=1;j<nn->n_neurons_per_layer[k+1]+1;j++){
-                nn->delta_w[k][i][j] = (learning_rate * nn->theta[k+1][j] * nn->out[k][i]) + (momentum * nn->delta_w[k][i][j]);
-                nn->w[k][i][j] += nn->delta_w[k][i][j];
+                nn->momentum_w[k][i][j] = (learning_rate * nn->delta[k+1][j] * nn->out[k][i]) + (momentum * nn->momentum_w[k][i][j]);
+                nn->w[k][i][j] += nn->momentum_w[k][i][j];
             }
         }
         for(int j=1;j<nn->n_neurons_per_layer[k+1]+1;j++){
-            nn->delta_b[k][j] = (learning_rate * nn->theta[k+1][j] * 1.0) + (momentum * nn->delta_b[k][j]);
-            nn->b[k][j] += nn->delta_b[k][j];
+            nn->momentum_b[k][j] = (learning_rate * nn->delta[k+1][j] * 1.0) + (momentum * nn->momentum_b[k][j]);
+            nn->b[k][j] += nn->momentum_b[k][j];
         }
     }
 }
@@ -270,15 +270,15 @@ int main(){
     srand(time(NULL));
     seed = rand();
 
-    int n_layers = 3;
-    int n_neurons_per_layer[] = {784, 64, 10};
+    int n_layers = 4;
+    int n_neurons_per_layer[] = {784, 32, 32, 10};
     struct NeuralNet* nn = newNet(n_layers, n_neurons_per_layer);
 
     double learning_rate = 1e-4;
     double momentum = 0.9;
     char* activation_fun = "relu";
     int num_samples_to_train = 10000;
-    int epochs = 50;
+    int epochs = 10;
 
     double** X_train = malloc(N_SAMPLES*sizeof(double*));
     for(int i=0;i<N_SAMPLES;i++){
