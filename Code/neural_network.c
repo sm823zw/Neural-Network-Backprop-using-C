@@ -346,14 +346,14 @@ int main(){
     int seed = rand();
 
     int n_layers = 3;
-    int n_neurons_per_layer[] = {784, 256, 10};
+    int n_neurons_per_layer[] = {784, 128, 10};
     struct NeuralNet* nn = newNet(n_layers, n_neurons_per_layer);
     init_nn(nn);
 
     double learning_rate = 1e-4;
     double init_lr = 1e-4;
     char* activation_fun = "relu";
-    char* loss = "mse";
+    char* loss = "ce";
     char* opt = "adam";
     int num_samples_to_train = 10000;
     int epochs = 20;
@@ -385,7 +385,7 @@ int main(){
     normalize_data(X_train, X_test);
 
 
-    FILE* file = fopen("metrics_mse_256.txt", "w");
+    FILE* file = fopen("metrics.txt", "w");
     fprintf(file, "train_loss,train_acc,test_loss,test_acc\n");
     
     for(int itr=0;itr<epochs;itr++){
